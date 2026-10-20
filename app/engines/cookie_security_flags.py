@@ -1,24 +1,26 @@
 import requests
 from datetime import datetime
 
-def run_cookie_scan(target_url: str) -> list:
+def run_cookie_scan(target_url: str, cookies: dict= None, proxies: dict=None, verify_ssl: bool=True) -> list:
     if not target_url.startswith(('http://', 'https://')):
         target_url = 'https://' + target_url
 
-    findings = []
+    cookie_findings = []
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     try:
-        response = requests.get(target_url, timeout=10, headers={"User-Agent": "CookieSecurityAuditBot/1.0"})
+        response = requests.head(target_url, timeout=10, headers={"User-Agent": "CookieSecurityAuditBot/1.0"}, cookies=cookies, proxies=proxies,
+            verify=verify_ssl,
+            allow_redirects=True)
     
         if not response.cookies:
-            return findings
+            return cookie_findings
 
         for cookie in response.cookies:
             cookie_name = cookie.name
             
             if not cookie.secure:
-                findings.append({
+                cookie_findings.append({
                     "timestamp": timestamp,
                     "target": target_url,
                     "issue": f"Insecure Cookie Flag: '{cookie_name}' missing 'Secure'",
@@ -31,7 +33,7 @@ def run_cookie_scan(target_url: str) -> list:
 
             rest_attrs = {k.lower(): v for k, v in getattr(cookie, '_rest', {}).items()}
             if 'httponly' not in rest_attrs:
-                findings.append({
+                cookie_findings.append({
                     "timestamp": timestamp,
                     "target": target_url,
                     "issue": f"Insecure Cookie Flag: '{cookie_name}' missing 'HttpOnly'",
@@ -44,7 +46,7 @@ def run_cookie_scan(target_url: str) -> list:
 
             samesite_val = rest_attrs.get('samesite')
             if not samesite_val:
-                findings.append({
+                cookie_findings.append({
                     "timestamp": timestamp,
                     "target": target_url,
                     "issue": f"Missing Cookie Attribute: '{cookie_name}' missing 'SameSite'",
@@ -56,7 +58,7 @@ def run_cookie_scan(target_url: str) -> list:
                 })
 
     except requests.exceptions.RequestException as e:
-        findings.append({
+        cookie_findings.append({
         "timestamp": timestamp,
         "target": target_url,
         "issue": "Cookie Scan Connection Failure",
@@ -67,4 +69,4 @@ def run_cookie_scan(target_url: str) -> list:
         "remediation": "Pastikan URL target aktif dan dapat dijangkau."
     })
 
-    return findings
+    return cookie_findings

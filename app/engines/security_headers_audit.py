@@ -1,9 +1,6 @@
 import requests
 from datetime import datetime
 
-INFORMATION_HEADERS = ["Server", "X-Powered-By", "X-AspNet-Version"]
-CACHE_HEADERS = ["Cache-Control", "Pragma", "ETag", "Last-Modified", "Expires"]
-
 SECURITY_HEADERS = {
     "Content-Security-Policy": {
         "severity": "High", 
@@ -48,77 +45,78 @@ SECURITY_HEADERS = {
         "remediation": "Tentukan kebijakan izin fitur browser menggunakan header Permissions-Policy."
     }
 }
+INFORMATION_HEADERS = ["Server", "X-Powered-By", "X-AspNet-Version"]
+CACHE_HEADERS = ["Cache-Control", "Pragma", "ETag", "Last-Modified", "Expires"]
 
-def run_custom_scan(target_url: str, cookies: dict = None, proxies: dict = None, verify_ssl: bool = True) -> dict:
-    if not target_url.startswith(('http://', 'https://')):
-        target_url = 'https://' + target_url
+def sh_check(target_url: str, cookies: dict = None, proxy: dict = None, verify_ssl: bool = True) -> dict:
+    if not target_url.startswith('http://','https://'):
+        target_url = 'http://' + target_url
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     findings = []
-    present_headers = {}
-    information_disclosure = {}
-    caching_headers = {}
+    headers_found = {}
+    server_info = {}
+    cache_info = {}
     final_url = target_url
 
     try:
         response = requests.head(
-            target_url, 
-            timeout=10, 
-            headers={"User-Agent": "SecurityHeaderAuditBot/1.0"},
-            cookies=cookies,
-            proxies=proxies,
-            verify=verify_ssl,
-            allow_redirects=True
+            target_url,
+            timeout = 10,
+            headers = {"User-Agent" : "SecurityHeadersCheck/1.0"},
+            cookies = cookies,
+            proxy = proxy,
+            ssl = verify_ssl,
+            allow_redirects = True
         )
-        
+
         final_url = response.url
         response_headers = {k.lower(): v for k, v in response.headers.items()}
 
-        target_sec_headers = dict(SECURITY_HEADERS)
+        target = dict(SECURITY_HEADERS)
         if "content-security-policy" in response_headers and "frame-ancestors" in response_headers.get("content-security-policy").lower():
-            target_sec_headers.pop("X-Frame-Options", None)
+            target.pop("Content-Security-Policy", None)
 
-        for header, info in target_sec_headers.items():
-            lheader = header.lower()
-            if lheader in response_headers:
-                val = response_headers[lheader]
-                present_headers[header] = val
+        for header, info in target.items():
+            low_header = header.lower()
+            if low_header in response_headers:
+                value = response_headers[low_header]
+                headers_found[header] = value
 
-                if lheader == 'strict-transport-security' and "max-age=0" in val.lower():
+                if low_header == "strict-transport-security" and "max-age" in value.lower():
                     findings.append({
                         "timestamp": timestamp,
                         "target": final_url,
-                        "issue": f"Insecure Header Value: {header}",
-                        "severity": "Medium",
-                        "cvss_score": 5.3,
-                        "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N",
+                        "issue" : f"Insecure Header Value: {header}",
+                        "severity" : "Medium",
+                        "cvss_score" : 5.3,
+                        "cvss_vector" : "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N",
                         "description": f"Header {header} diatur dengan max-age=0, yang menonaktifkan fungsi HSTS.",
                         "remediation": "Perbarui durasi max-age menjadi minimal 1 tahun (contoh: max-age=31536000)."
                     })
             else:
-                if lheader == 'strict-transport-security' and not final_url.startswith('https://'):
+                if low_header == 'strict-transport-security' and not final_url.startswith('https://'):
                     continue
 
                 findings.append({
                     "timestamp": timestamp,
                     "target": final_url,
-                    "issue": f"Missing Security Header: {header}",
-                    "severity": info["severity"],
+                    "issue" : f"Missing Security Header: {header}",
+                     "severity": info["severity"],
                     "cvss_score": info["cvss_score"],
                     "cvss_vector": info["cvss_vector"],
                     "description": info["desc"],
-                    "remediation": info["remediation"] 
+                    "remediation": info["remediation"]
                 })
-
         for info in INFORMATION_HEADERS:
-            linfo = info.lower()
-            if linfo in response_headers:
-                information_disclosure[info] = response_headers[linfo]
+            low_info = info.lower()
+            if low_info in response_headers:
+                server_info[info] = response_headers[low_info]
 
         for cache in CACHE_HEADERS:
-            lcache = cache.lower()
-            if lcache in response_headers:
-                caching_headers[cache] = response_headers[lcache]
+            low_cache = cache.lower()
+            if low_cache in response_headers:
+                cache_info[cache] = response_headers[low_cache]
 
     except requests.exceptions.SSLError as e:
         findings.append({
@@ -148,7 +146,7 @@ def run_custom_scan(target_url: str, cookies: dict = None, proxies: dict = None,
         "target": target_url,
         "final_url": final_url,
         "findings": findings,
-        "present_headers": present_headers,
-        "information_disclosure": information_disclosure,
-        "caching_headers": caching_headers
+        "present_headers": headers_found,
+        "information_disclosure": server_info,
+        "caching_headers": cache_info
     }

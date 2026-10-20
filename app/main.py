@@ -2,8 +2,8 @@ from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-# Mengimpor modul dengan nama file yang baru
-from app.engines.security_headers_audit import run_custom_scan
+
+from app.engines.security_headers_audit import sh_check
 from app.engines.cookie_security_flags import run_cookie_scan
 
 app = FastAPI()
@@ -27,14 +27,22 @@ async def read_dashboard(request: Request):
     })
 
 @app.post("/start-scan", response_class=HTMLResponse)
-async def start_scan(request: Request, target_url: str = Form(...)):
-    # 1. Jalankan pemindaian Security Headers dari file baru
-    header_result = run_custom_scan(target_url)
+async def start_scan(request: Request, target_url: str = Form(...), cookies: str = Form(None), proxies: str = Form(None), verify_ssl: bool = Form(True)):
 
+    cookies_dict = None
+    if cookies:
+        cookies_dict = {}
+        for item in cookies.split(";"):
+            if "=" in item:
+                k, v = item.strip().split("=", 1)
+                cookies_dict[k] = v
+
+    # 1. Jalankan pemindaian Security Headers dari file baru
+    header_result = sh_check(target_url, cookies=cookies_dict, verify_ssl=True)
     header_findings = header_result.get("findings", [])
     
     # 2. Jalankan pemindaian Cookie Security Flags
-    cookie_findings = run_cookie_scan(target_url)
+    cookie_findings = run_cookie_scan(target_url, cookies=cookies_dict, verify_ssl=True)
     
     # Gabungkan semua temuan
     all_findings = header_findings + cookie_findings
